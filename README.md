@@ -15,7 +15,8 @@ PortHelper is designed to be a comprehensive cryptocurrency portfolio management
 
 ```bash
 # Clone the repository
-git clone [your-repo-url]
+git clone https://github.com/rendurdreams/PortHelper.git
+
 cd PortHelper
 
 # Install dependencies
