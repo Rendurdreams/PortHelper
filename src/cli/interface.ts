@@ -2,19 +2,24 @@ import inquirer from 'inquirer';
 import { CMCService } from '../services/cmcService';
 import { PortfolioService } from '../services/portfolioService';
 import { JournalService } from '../services/journalService';
+import { AIAnalysisService } from '../services/aiAnalysisService';
 import { JournalCLI } from './journalCommands';
+import { Command } from 'commander';
+import * as fs from 'fs/promises';
 
 export class CLI {
   private cmcService: CMCService;
   private portfolio: PortfolioService;
   private journal: JournalService;
   private journalCLI: JournalCLI;
+  private aiService: AIAnalysisService;
 
   constructor(dbPath: string, cmcApiKey: string) {
     this.cmcService = new CMCService(cmcApiKey);
     this.portfolio = new PortfolioService(dbPath);
     this.journal = new JournalService(dbPath);
     this.journalCLI = new JournalCLI(this.journal, this.portfolio);
+    this.aiService = new AIAnalysisService(this.portfolio);
   }
 
   async start(): Promise<void> {
@@ -33,6 +38,11 @@ export class CLI {
             'View Portfolio',
             'Update Prices',
             'Remove Coin',
+            '--- AI Analysis ---',
+            'Full Portfolio Analysis',
+            'Get Trading Strategies',
+            'Risk Assessment',
+            'Market Sentiment',
             '--- Trading Journal ---',
             'Add Journal Entry',
             'View Journal Entries',
@@ -59,6 +69,20 @@ export class CLI {
             await this.removeCoin();
             break;
           
+          // AI Analysis
+          case 'Full Portfolio Analysis':
+            await this.runFullAnalysis();
+            break;
+          case 'Get Trading Strategies':
+            await this.getStrategies();
+            break;
+          case 'Risk Assessment':
+            await this.getRiskAssessment();
+            break;
+          case 'Market Sentiment':
+            await this.getMarketSentiment();
+            break;
+          
           // Journal Management
           case 'Add Journal Entry':
             await this.journalCLI.addJournalEntry();
@@ -77,6 +101,7 @@ export class CLI {
           
           // Separator handling
           case '--- Portfolio Management ---':
+          case '--- AI Analysis ---':
           case '--- Trading Journal ---':
           case '--- System ---':
             break;
@@ -140,7 +165,7 @@ export class CLI {
       amount: amount,
       entry_price: selectedCoin.quote.USD.price,
       last_price: selectedCoin.quote.USD.price,
-      strategy: strategy || null
+      strategy: strategy || undefined
     });
 
     console.log(`Added ${selectedCoin.name} to portfolio`);
@@ -218,7 +243,6 @@ export class CLI {
     console.log('\nStrategic Insights:');
     console.table(insights);
 
-    // Get follow-ups
     const followUps = await this.journal.getFollowUpNeeded();
     if (followUps.length > 0) {
       console.log('\nPending Follow-ups:');
@@ -226,5 +250,80 @@ export class CLI {
         console.log(`- ${entry.date.toLocaleDateString()}: ${entry.entry_type} - ${entry.entry_text.substring(0, 50)}...`);
       });
     }
+  }
+
+  private async runFullAnalysis(): Promise<void> {
+    console.log('\nRunning complete portfolio analysis...');
+    
+    console.log('\n=== Portfolio Analysis ===');
+    const analysis = await this.aiService.analyzePortfolio();
+    console.log(analysis);
+    
+    console.log('\n=== Strategy Suggestions ===');
+    const strategies = await this.aiService.suggestStrategies(analysis);
+    console.log(strategies);
+    
+    console.log('\n=== Risk Assessment ===');
+    const risks = await this.aiService.getRiskAssessment();
+    console.log(risks);
+    
+    console.log('\n=== Market Sentiment Analysis ===');
+    const sentiment = await this.aiService.getMarketSentimentAnalysis();
+    console.log(sentiment);
+
+    const { saveAnalysis } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'saveAnalysis',
+        message: 'Would you like to save this analysis to a file?',
+        default: false
+      }
+    ]);
+
+    if (saveAnalysis) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `portfolio-analysis-${timestamp}.txt`;
+      const content = `
+Portfolio Analysis Report
+Generated: ${new Date().toLocaleString()}
+
+=== Portfolio Analysis ===
+${analysis}
+
+=== Strategy Suggestions ===
+${strategies}
+
+=== Risk Assessment ===
+${risks}
+
+=== Market Sentiment Analysis ===
+${sentiment}
+      `;
+
+      await fs.writeFile(filename, content);
+      console.log(`\nAnalysis saved to ${filename}`);
+    }
+  }
+
+  private async getStrategies(): Promise<void> {
+    console.log('\nGenerating trading strategies...');
+    const analysis = await this.aiService.analyzePortfolio();
+    const strategies = await this.aiService.suggestStrategies(analysis);
+    console.log('\n=== Strategy Suggestions ===');
+    console.log(strategies);
+  }
+
+  private async getRiskAssessment(): Promise<void> {
+    console.log('\nAssessing portfolio risks...');
+    const risks = await this.aiService.getRiskAssessment();
+    console.log('\n=== Risk Assessment ===');
+    console.log(risks);
+  }
+
+  private async getMarketSentiment(): Promise<void> {
+    console.log('\nAnalyzing market sentiment...');
+    const sentiment = await this.aiService.getMarketSentimentAnalysis();
+    console.log('\n=== Market Sentiment Analysis ===');
+    console.log(sentiment);
   }
 }
