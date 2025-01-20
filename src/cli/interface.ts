@@ -8,6 +8,7 @@ import { JournalCLI } from './journalCommands';
 import { WalletCLI } from './walletCommands';
 import { Command } from 'commander';
 import * as fs from 'fs/promises';
+import { Database } from '../db/database';
 
 export class CLI {
   private cmcService: CMCService;
@@ -16,137 +17,160 @@ export class CLI {
   private journalCLI: JournalCLI;
   private walletCLI: WalletCLI;
   private aiService: AIAnalysisService;
+  private database: Database;
+  private walletService: WalletService;
 
   constructor(dbPath: string, cmcApiKey: string) {
     if (!process.env.MORALIS_API_KEY) {
       throw new Error('MORALIS_API_KEY is required in environment variables');
     }
   
+    // Initialize database first
+    this.database = new Database(dbPath);
+    
+    // Initialize services
     this.cmcService = new CMCService(cmcApiKey);
     this.portfolio = new PortfolioService(dbPath);
     this.journal = new JournalService(dbPath);
-    this.journalCLI = new JournalCLI(this.journal, this.portfolio);
-    this.aiService = new AIAnalysisService(this.portfolio);
+    this.walletService = new WalletService(dbPath, process.env.MORALIS_API_KEY);
     
-    // Create WalletService with the same database path
-    const walletService = new WalletService(dbPath, process.env.MORALIS_API_KEY);
-    this.walletCLI = new WalletCLI(walletService);
+    // Initialize CLI components
+    this.journalCLI = new JournalCLI(this.journal, this.portfolio);
+    this.walletCLI = new WalletCLI(this.walletService);
+    this.aiService = new AIAnalysisService(this.portfolio);
   }
 
   async start(): Promise<void> {
-    await this.portfolio.init();
-    await this.journal.init();
-    
-    while (true) {
-      const { action } = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'action',
-          message: 'What would you like to do?',
-          choices: [
-            '--- Portfolio Management ---',
-            'Add Coin to Portfolio',
-            'View Portfolio',
-            'Update Prices',
-            'Remove Coin',
-            '--- AI Analysis ---',
-            'Full Portfolio Analysis',
-            'Get Trading Strategies',
-            'Risk Assessment',
-            'Market Sentiment',
-            '--- Trading Journal ---',
-            'Add Journal Entry',
-            'View Journal Entries',
-            'View Trading Patterns',
-            '--- Wallet Tracking ---',
-            'Add Wallet',
-            'View Wallets',
-            'Check Balances',
-            'View Wallet Portfolio',
-            'Remove Wallet',
-            '--- System ---',
-            'Exit'
-          ]
-        }
-      ]);
+    try {
+      // Initialize database and all services
+      await this.database.init();
+      await this.portfolio.init();
+      await this.journal.init();
+      
+      console.log('Database and services initialized successfully!');
+      
+      // Start the main CLI loop
+      while (true) {
+        const { action } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'action',
+            message: 'What would you like to do?',
+            choices: [
+              '--- Portfolio Management ---',
+              'Add Coin to Portfolio',
+              'View Portfolio',
+              'Update Prices',
+              'Remove Coin',
+              '--- AI Analysis ---',
+              'Full Portfolio Analysis',
+              'Get Trading Strategies',
+              'Risk Assessment',
+              'Market Sentiment',
+              '--- Trading Journal ---',
+              'Add Journal Entry',
+              'View Journal Entries',
+              'View Trading Patterns',
+              '--- Wallet Tracking ---',
+              'Add Wallet',
+              'View Wallets',
+              'Check Balances',
+              'View Wallet Portfolio',
+              'Remove Wallet',
+              '--- System ---',
+              'Exit'
+            ]
+          }
+        ]);
 
-      try {
-        switch (action) {
-          // Portfolio Management
-          case 'Add Coin to Portfolio':
-            await this.addCoinToPortfolio();
-            break;
-          case 'View Portfolio':
-            await this.displayPortfolio();
-            break;
-          case 'Update Prices':
-            await this.updatePrices();
-            break;
-          case 'Remove Coin':
-            await this.removeCoin();
-            break;
-          
-          // AI Analysis
-          case 'Full Portfolio Analysis':
-            await this.runFullAnalysis();
-            break;
-          case 'Get Trading Strategies':
-            await this.getStrategies();
-            break;
-          case 'Risk Assessment':
-            await this.getRiskAssessment();
-            break;
-          case 'Market Sentiment':
-            await this.getMarketSentiment();
-            break;
-          
-          // Journal Management  
-          case 'Add Journal Entry':
-            await this.journalCLI.addJournalEntry();
-            break;
-          case 'View Journal Entries':
-            await this.journalCLI.viewJournalEntries();
-            break;
-          case 'View Trading Patterns':
-            await this.viewTradingPatterns();
-            break;
+        try {
+          switch (action) {
+            // Portfolio Management
+            case 'Add Coin to Portfolio':
+              await this.addCoinToPortfolio();
+              break;
+            case 'View Portfolio':
+              await this.displayPortfolio();
+              break;
+            case 'Update Prices':
+              await this.updatePrices();
+              break;
+            case 'Remove Coin':
+              await this.removeCoin();
+              break;
+            
+            // AI Analysis
+            case 'Full Portfolio Analysis':
+              await this.runFullAnalysis();
+              break;
+            case 'Get Trading Strategies':
+              await this.getStrategies();
+              break;
+            case 'Risk Assessment':
+              await this.getRiskAssessment();
+              break;
+            case 'Market Sentiment':
+              await this.getMarketSentiment();
+              break;
+            
+            // Journal Management  
+            case 'Add Journal Entry':
+              await this.journalCLI.addJournalEntry();
+              break;
+            case 'View Journal Entries':
+              await this.journalCLI.viewJournalEntries();
+              break;
+            case 'View Trading Patterns':
+              await this.viewTradingPatterns();
+              break;
 
-          // Wallet Management
-          case 'Add Wallet':
-            await this.walletCLI.addWallet();
-            break;
-          case 'View Wallets':
-            await this.walletCLI.viewWallets();
-            break;
-          case 'Check Balances':
-            await this.walletCLI.checkBalances();
-            break;
-          case 'View Wallet Portfolio':
-            await this.walletCLI.viewPortfolio();
-            break;
-          case 'Remove Wallet':
-            await this.walletCLI.removeWallet();
-            break;
+            // Wallet Management
+            case 'Add Wallet':
+              await this.walletCLI.addWallet();
+              break;
+            case 'View Wallets':
+              await this.walletCLI.viewWallets();
+              break;
+            case 'Check Balances':
+              await this.walletCLI.checkBalances();
+              break;
+            case 'View Wallet Portfolio':
+              await this.walletCLI.viewPortfolio();
+              break;
+            case 'Remove Wallet':
+              await this.walletCLI.removeWallet();
+              break;
 
-          case 'Exit':
-            console.log('Goodbye!');
-            process.exit(0);
-          
-          // Separator handling
-          case '--- Portfolio Management ---':
-          case '--- AI Analysis ---':
-          case '--- Trading Journal ---':
-          case '--- Wallet Tracking ---':
-          case '--- System ---':
-            break;
+            case 'Exit':
+              console.log('Goodbye!');
+              await this.database.close();
+              process.exit(0);
+            
+            // Separator handling
+            case '--- Portfolio Management ---':
+            case '--- AI Analysis ---':
+            case '--- Trading Journal ---':
+            case '--- Wallet Tracking ---':
+            case '--- System ---':
+              break;
+
+            default:
+              console.log('Invalid option selected');
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            console.error('Error:', error.message);
+          } else {
+            console.error('An unknown error occurred');
+          }
         }
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error('Error:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+
+        // Add a small delay between operations
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+    } catch (error) {
+      console.error('Failed to initialize application:', error);
+      process.exit(1);
     }
   }
 
@@ -193,7 +217,7 @@ export class CLI {
     ]);
 
     await this.portfolio.addCoin({
-      cmc_id: selectedCoin.id,
+      cmc_id: selectedCoin.id.toString(),
       symbol: selectedCoin.symbol,
       name: selectedCoin.name,
       amount: amount,
@@ -206,35 +230,33 @@ export class CLI {
   }
 
   private async displayPortfolio(): Promise<void> {
-    const coins = await this.portfolio.getCoins();
-    if (coins.length === 0) {
+    const holdings = await this.database.getHoldings();
+    if (holdings.length === 0) {
       console.log('\nPortfolio is empty. Add some coins first!\n');
       return;
     }
 
     console.log('\nYour Portfolio:');
-    const formatted = coins.map(coin => ({
-      Symbol: coin.symbol,
-      Name: coin.name,
-      Amount: coin.amount.toFixed(4),
-      'Entry Price': `$${coin.entry_price.toFixed(2)}`,
-      'Current Price': `$${coin.last_price.toFixed(2)}`,
-      'Value': `$${(coin.amount * coin.last_price).toFixed(2)}`,
-      'Strategy': coin.strategy || '-'
+    const formatted = holdings.map(holding => ({
+      Symbol: holding.symbol,
+      Name: holding.name,
+      Amount: holding.holdings.toFixed(4),
+      'Current Price': `$${holding.current_price.toFixed(2)}`,
+      'Total Value': `$${holding.value_usd.toFixed(2)}`
     }));
 
     console.table(formatted);
 
-    const totalValue = coins.reduce((sum, coin) => sum + (coin.amount * coin.last_price), 0);
+    const totalValue = holdings.reduce((sum, holding) => sum + holding.value_usd, 0);
     console.log(`\nTotal Portfolio Value: $${totalValue.toFixed(2)}\n`);
   }
 
   private async updatePrices(): Promise<void> {
-    const coins = await this.portfolio.getCoins();
+    const coins = await this.database.getTrackedCoins();
     for (const coin of coins) {
       try {
-        const updated = await this.cmcService.getCoinInfo(coin.cmc_id);
-        await this.portfolio.updatePrice(coin.cmc_id, updated.quote.USD.price);
+        const updated = await this.cmcService.getCoinInfo(parseInt(coin.coin_id));
+        await this.database.updateCoinPrice(coin.coin_id, updated.quote.USD.price);
         console.log(`Updated ${coin.symbol} price to $${updated.quote.USD.price.toFixed(2)}`);
       } catch (error) {
         console.error(`Failed to update ${coin.symbol}:`, error instanceof Error ? error.message : 'Unknown error');
@@ -243,7 +265,7 @@ export class CLI {
   }
 
   private async removeCoin(): Promise<void> {
-    const coins = await this.portfolio.getCoins();
+    const coins = await this.database.getTrackedCoins();
     if (coins.length === 0) {
       console.log('\nNo coins in portfolio\n');
       return;
@@ -256,7 +278,7 @@ export class CLI {
         message: 'Select coin to remove:',
         choices: coins.map(c => ({
           name: `${c.name} (${c.symbol})`,
-          value: c.cmc_id
+          value: c.coin_id
         }))
       }
     ]);
@@ -286,6 +308,7 @@ export class CLI {
     }
   }
 
+  // AI Analysis methods remain the same as in your previous implementation
   private async runFullAnalysis(): Promise<void> {
     console.log('\nRunning complete portfolio analysis...');
     

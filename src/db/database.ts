@@ -34,23 +34,8 @@ export class Database {
     });
   }
 
-  async addWallet(wallet: { address: string; network: string; label?: string }): Promise<void> {
-    await this.run(
-      `INSERT INTO tracked_wallets (address, network, label)
-       VALUES (?, ?, ?)`,
-      [wallet.address, wallet.network, wallet.label]
-    );
-  }
-
-  async getTrackedWallets(): Promise<any[]> {
-    return this.all('SELECT * FROM tracked_wallets');
-  }
-
-  async removeWallet(address: string): Promise<void> {
-    await this.run('DELETE FROM tracked_wallets WHERE address = ?', [address]);
-  }
-
   async init(): Promise<void> {
+    // Create coins table
     await this.run(`
       CREATE TABLE IF NOT EXISTS coins (
         coin_id TEXT PRIMARY KEY,
@@ -65,6 +50,7 @@ export class Database {
       )
     `);
 
+    // Create trades table
     await this.run(`
       CREATE TABLE IF NOT EXISTS trades (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,6 +64,7 @@ export class Database {
       )
     `);
 
+    // Create strategies table
     await this.run(`
       CREATE TABLE IF NOT EXISTS strategies (
         id TEXT PRIMARY KEY,
@@ -87,8 +74,73 @@ export class Database {
         last_run TIMESTAMP
       )
     `);
+
+    // Create tracked_wallets table
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS tracked_wallets (
+        address TEXT PRIMARY KEY,
+        network TEXT NOT NULL,
+        label TEXT,
+        tracked_since TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create journal_entries table
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        entry_type TEXT NOT NULL,
+        coin_id TEXT,
+        trade_type TEXT CHECK(type IN ('BUY', 'SELL')),
+        amount REAL,
+        price REAL,
+        emotional_state TEXT NOT NULL,
+        confidence_level INTEGER NOT NULL,
+        market_sentiment TEXT NOT NULL,
+        entry_text TEXT NOT NULL,
+        lessons_learned TEXT,
+        follow_up_needed BOOLEAN DEFAULT FALSE,
+        tags TEXT,
+        FOREIGN KEY (coin_id) REFERENCES coins(coin_id)
+      )
+    `);
+
+    // Create portfolio_snapshots table
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        total_value_usd REAL NOT NULL,
+        snapshot_data TEXT NOT NULL
+      )
+    `);
+
+    // Create indices for better query performance
+    await this.run('CREATE INDEX IF NOT EXISTS idx_trades_coin_id ON trades(coin_id)');
+    await this.run('CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp)');
+    await this.run('CREATE INDEX IF NOT EXISTS idx_journal_date ON journal_entries(date)');
+    await this.run('CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON portfolio_snapshots(timestamp)');
   }
 
+  // Wallet management methods
+  async addWallet(wallet: { address: string; network: string; label?: string }): Promise<void> {
+    await this.run(
+      `INSERT INTO tracked_wallets (address, network, label)
+       VALUES (?, ?, ?)`,
+      [wallet.address, wallet.network, wallet.label]
+    );
+  }
+
+  async getTrackedWallets(): Promise<any[]> {
+    return this.all('SELECT * FROM tracked_wallets ORDER BY tracked_since DESC');
+  }
+
+  async removeWallet(address: string): Promise<void> {
+    await this.run('DELETE FROM tracked_wallets WHERE address = ?', [address]);
+  }
+
+  // Portfolio management methods
   async addCoin(coin: {
     coin_id: string;
     symbol: string;
@@ -102,6 +154,20 @@ export class Database {
     );
   }
 
+  async updateCoinPrice(coinId: string, priceUsd: number): Promise<void> {
+    await this.run(
+      `UPDATE coins 
+       SET price_usd = ?, last_updated = CURRENT_TIMESTAMP 
+       WHERE coin_id = ?`,
+      [priceUsd, coinId]
+    );
+  }
+
+  async getTrackedCoins(): Promise<any[]> {
+    return this.all('SELECT * FROM coins ORDER BY symbol');
+  }
+
+  // Trade management methods
   async addTrade(trade: {
     coin_id: string;
     type: 'BUY' | 'SELL';
@@ -116,6 +182,20 @@ export class Database {
     );
   }
 
+  async getTradeHistory(): Promise<any[]> {
+    return this.all(`
+      SELECT 
+        t.*,
+        c.symbol,
+        c.name,
+        (t.amount * t.price_usd) as total_value
+      FROM trades t
+      JOIN coins c ON t.coin_id = c.coin_id
+      ORDER BY t.timestamp DESC
+    `);
+  }
+
+  // Portfolio analysis methods
   async getHoldings(): Promise<any[]> {
     return this.all(`
       WITH holdings AS (
@@ -134,24 +214,16 @@ export class Database {
       FROM holdings h
       JOIN coins c ON h.coin_id = c.coin_id
       WHERE h.amount > 0
+      ORDER BY value_usd DESC
     `);
   }
 
-  async getTrackedCoins(): Promise<any[]> {
-    return this.all('SELECT * FROM coins');
-  }
-
-  async getTradeHistory(): Promise<any[]> {
-    return this.all(`
-      SELECT 
-        t.*,
-        c.symbol,
-        c.name,
-        (t.amount * t.price_usd) as total_value
-      FROM trades t
-      JOIN coins c ON t.coin_id = c.coin_id
-      ORDER BY t.timestamp DESC
-    `);
+  async savePortfolioSnapshot(totalValue: number, snapshotData: string): Promise<void> {
+    await this.run(
+      `INSERT INTO portfolio_snapshots (total_value_usd, snapshot_data)
+       VALUES (?, ?)`,
+      [totalValue, snapshotData]
+    );
   }
 
   async close(): Promise<void> {
