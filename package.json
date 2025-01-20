@@ -12,6 +12,8 @@
   "dependencies": {
     "@langchain/core": "^0.3.31",
     "@langchain/openai": "^0.3.17",
+    "@moralisweb3/common-sol-utils": "^2.23.2",
+    "moralis": "^2.23.2",
     "@supabase/supabase-js": "^2.47.16",
     "axios": "^1.6.5",
     "commander": "^11.1.0",

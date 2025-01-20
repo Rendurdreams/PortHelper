@@ -1,23 +1,57 @@
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
 
 export class Database {
   private db: sqlite3.Database;
-  private runQuery: (sql: string, params?: any[]) => Promise<any>;
-  private getQuery: (sql: string, params?: any[]) => Promise<any>;
-  private allQuery: (sql: string, params?: any[]) => Promise<any[]>;
 
   constructor(dbPath: string) {
     this.db = new sqlite3.Database(dbPath);
-    // Promisify database methods
-    this.runQuery = promisify(this.db.run.bind(this.db));
-    this.getQuery = promisify(this.db.get.bind(this.db));
-    this.allQuery = promisify(this.db.all.bind(this.db));
+  }
+
+  private async run(sql: string, params: any[] = []): Promise<sqlite3.RunResult> {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, function (this: sqlite3.RunResult, err: Error | null) {
+        if (err) reject(err);
+        else resolve(this);
+      });
+    });
+  }
+
+  private async get(sql: string, params: any[] = []): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err: Error | null, row: any) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+  }
+
+  private async all(sql: string, params: any[] = []): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err: Error | null, rows: any[]) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  }
+
+  async addWallet(wallet: { address: string; network: string; label?: string }): Promise<void> {
+    await this.run(
+      `INSERT INTO tracked_wallets (address, network, label)
+       VALUES (?, ?, ?)`,
+      [wallet.address, wallet.network, wallet.label]
+    );
+  }
+
+  async getTrackedWallets(): Promise<any[]> {
+    return this.all('SELECT * FROM tracked_wallets');
+  }
+
+  async removeWallet(address: string): Promise<void> {
+    await this.run('DELETE FROM tracked_wallets WHERE address = ?', [address]);
   }
 
   async init(): Promise<void> {
-    // Create tables
-    await this.runQuery(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS coins (
         coin_id TEXT PRIMARY KEY,
         symbol TEXT NOT NULL,
@@ -31,7 +65,7 @@ export class Database {
       )
     `);
 
-    await this.runQuery(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS trades (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         coin_id TEXT NOT NULL,
@@ -44,7 +78,7 @@ export class Database {
       )
     `);
 
-    await this.runQuery(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS strategies (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -61,7 +95,7 @@ export class Database {
     name: string;
     price_usd: number;
   }): Promise<void> {
-    await this.runQuery(
+    await this.run(
       `INSERT OR REPLACE INTO coins (coin_id, symbol, name, price_usd, last_updated)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       [coin.coin_id, coin.symbol, coin.name, coin.price_usd]
@@ -75,7 +109,7 @@ export class Database {
     price_usd: number;
     notes?: string;
   }): Promise<void> {
-    await this.runQuery(
+    await this.run(
       `INSERT INTO trades (coin_id, type, amount, price_usd, notes)
        VALUES (?, ?, ?, ?, ?)`,
       [trade.coin_id, trade.type, trade.amount, trade.price_usd, trade.notes]
@@ -83,7 +117,7 @@ export class Database {
   }
 
   async getHoldings(): Promise<any[]> {
-    return this.allQuery(`
+    return this.all(`
       WITH holdings AS (
         SELECT 
           coin_id,
@@ -104,11 +138,11 @@ export class Database {
   }
 
   async getTrackedCoins(): Promise<any[]> {
-    return this.allQuery('SELECT * FROM coins');
+    return this.all('SELECT * FROM coins');
   }
 
   async getTradeHistory(): Promise<any[]> {
-    return this.allQuery(`
+    return this.all(`
       SELECT 
         t.*,
         c.symbol,
@@ -121,7 +155,7 @@ export class Database {
   }
 
   async close(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       this.db.close((err) => {
         if (err) reject(err);
         else resolve();

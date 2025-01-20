@@ -3,7 +3,9 @@ import { CMCService } from '../services/cmcService';
 import { PortfolioService } from '../services/portfolioService';
 import { JournalService } from '../services/journalService';
 import { AIAnalysisService } from '../services/aiAnalysisService';
+import { WalletService } from '../services/walletService';
 import { JournalCLI } from './journalCommands';
+import { WalletCLI } from './walletCommands';
 import { Command } from 'commander';
 import * as fs from 'fs/promises';
 
@@ -12,14 +14,23 @@ export class CLI {
   private portfolio: PortfolioService;
   private journal: JournalService;
   private journalCLI: JournalCLI;
+  private walletCLI: WalletCLI;
   private aiService: AIAnalysisService;
 
   constructor(dbPath: string, cmcApiKey: string) {
+    if (!process.env.MORALIS_API_KEY) {
+      throw new Error('MORALIS_API_KEY is required in environment variables');
+    }
+  
     this.cmcService = new CMCService(cmcApiKey);
     this.portfolio = new PortfolioService(dbPath);
     this.journal = new JournalService(dbPath);
     this.journalCLI = new JournalCLI(this.journal, this.portfolio);
     this.aiService = new AIAnalysisService(this.portfolio);
+    
+    // Create WalletService with the same database path
+    const walletService = new WalletService(dbPath, process.env.MORALIS_API_KEY);
+    this.walletCLI = new WalletCLI(walletService);
   }
 
   async start(): Promise<void> {
@@ -47,6 +58,12 @@ export class CLI {
             'Add Journal Entry',
             'View Journal Entries',
             'View Trading Patterns',
+            '--- Wallet Tracking ---',
+            'Add Wallet',
+            'View Wallets',
+            'Check Balances',
+            'View Wallet Portfolio',
+            'Remove Wallet',
             '--- System ---',
             'Exit'
           ]
@@ -83,7 +100,7 @@ export class CLI {
             await this.getMarketSentiment();
             break;
           
-          // Journal Management
+          // Journal Management  
           case 'Add Journal Entry':
             await this.journalCLI.addJournalEntry();
             break;
@@ -94,7 +111,23 @@ export class CLI {
             await this.viewTradingPatterns();
             break;
 
-          // System
+          // Wallet Management
+          case 'Add Wallet':
+            await this.walletCLI.addWallet();
+            break;
+          case 'View Wallets':
+            await this.walletCLI.viewWallets();
+            break;
+          case 'Check Balances':
+            await this.walletCLI.checkBalances();
+            break;
+          case 'View Wallet Portfolio':
+            await this.walletCLI.viewPortfolio();
+            break;
+          case 'Remove Wallet':
+            await this.walletCLI.removeWallet();
+            break;
+
           case 'Exit':
             console.log('Goodbye!');
             process.exit(0);
@@ -103,6 +136,7 @@ export class CLI {
           case '--- Portfolio Management ---':
           case '--- AI Analysis ---':
           case '--- Trading Journal ---':
+          case '--- Wallet Tracking ---':
           case '--- System ---':
             break;
         }

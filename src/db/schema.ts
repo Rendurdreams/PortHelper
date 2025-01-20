@@ -1,4 +1,8 @@
-import Database from 'better-sqlite3';
+// src/db/schema.ts
+import type { Database } from 'better-sqlite3';
+// OR if that doesn't work:
+// import BetterSqlite3 from 'better-sqlite3';
+// type Database = BetterSqlite3.Database;
 
 export const initializeDatabase = (db: Database): void => {
   // Create tables
@@ -44,6 +48,13 @@ export const initializeDatabase = (db: Database): void => {
       timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (strategy_id) REFERENCES strategies(id),
       FOREIGN KEY (coin_id) REFERENCES coins(coin_id)
+    );
+    
+    CREATE TABLE IF NOT EXISTS tracked_wallets (
+      address TEXT PRIMARY KEY,
+      label TEXT,
+      network TEXT NOT NULL,
+      tracked_since TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 };
